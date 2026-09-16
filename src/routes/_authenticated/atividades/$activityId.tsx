@@ -88,21 +88,7 @@ function ActivityDetailPage() {
     await load();
   };
 
-  const upload = async (file: File) => {
-    if (!PHOTO_TYPES.includes(file.type)) { toast.error("Envie somente imagens JPEG ou PNG"); return; }
-    if (file.size > PHOTO_MAX_BYTES) { toast.error("A imagem deve ter no máximo 50 MB"); return; }
-    const caption = captions[file.name]?.trim() || null;
-    const extension = file.type === "image/png" ? "png" : "jpg";
-    const path = `${activity.id}/${crypto.randomUUID()}.${extension}`;
-    setBusy(true);
-    const { error: uploadError } = await supabase.storage.from("activity-photos").upload(path, file, { contentType: file.type, upsert: false });
-    if (uploadError) { setBusy(false); toast.error("Não foi possível enviar a foto"); return; }
-    const { error } = await supabase.from("activity_photos").insert({ activity_id: activity.id, storage_path: path, caption, uploaded_by: session.userId });
-    setBusy(false);
-    if (error) { await supabase.storage.from("activity-photos").remove([path]); toast.error("Não foi possível registrar a foto"); return; }
-    toast.success("Foto anexada");
-    await load();
-  };
+
 
   const removePhoto = async (photo: ActivityPhoto) => {
     const { error } = await supabase.from("activity_photos").delete().eq("id", photo.id);

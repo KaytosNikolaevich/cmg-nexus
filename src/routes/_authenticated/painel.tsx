@@ -26,7 +26,8 @@ export const Route = createFileRoute("/_authenticated/painel")({
   component: DashboardPage,
 });
 
-const COLORS = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)"];
+const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
+const COLOR_CLASSES = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"];
 
 type DashboardRow = Activity & { analyst: string };
 
@@ -96,7 +97,7 @@ function DashboardPage() {
           <div className="grid gap-2">
             {chartData.map((item, index) => (
               <div key={item.name} className="flex items-center justify-between text-sm">
-                <span className="flex min-w-0 items-center gap-2"><span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} /><span className="truncate">{item.name}</span></span>
+                <span className="flex min-w-0 items-center gap-2"><span className={`size-2.5 shrink-0 rounded-full ${COLOR_CLASSES[index % COLOR_CLASSES.length]}`} /><span className="truncate">{item.name}</span></span>
                 <strong>{item.value}</strong>
               </div>
             ))}
