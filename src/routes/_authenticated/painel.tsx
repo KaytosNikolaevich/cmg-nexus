@@ -87,7 +87,7 @@ function DashboardPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={chartData} dataKey="value" nameKey="name" innerRadius={58} outerRadius={92} paddingAngle={3}>
-                    {chartData.map((item, index) => <Cell key={item.name} fill={COLORS[index % COLORS.length]} />)}
+                    {chartData.map((item, index) => <Cell key={item.name} fill={COLORS[index % COLORS.length] ?? "var(--chart-1)"} />)}
                   </Pie>
                   <Tooltip />
                 </PieChart>
