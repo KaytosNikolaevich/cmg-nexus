@@ -19,13 +19,6 @@ const companyIdSchema = z
   .max(40)
   .regex(/^[A-Za-z0-9._-]+$/, "Use apenas letras, números, ponto, hífen ou underline");
 
-async function requireManagement(context: {
-  supabase: Parameters<Parameters<typeof requireSupabaseAuth>[0]>[0] extends never ? never : never;
-  userId: string;
-}) {
-  return context;
-}
-
 export type ManagedUser = {
   id: string;
   fullName: string;
