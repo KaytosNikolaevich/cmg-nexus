@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedAtividadesRouteImport } from './routes/_authenticated/atividades'
 import { Route as AuthenticatedDistribuirRouteImport } from './routes/_authenticated/distribuir'
 import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
+import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
 import { Route as AuthenticatedAtividadesActivityIdRouteImport } from './routes/_authenticated/atividades/$activityId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -40,6 +41,11 @@ const AuthenticatedPainelRoute = AuthenticatedPainelRouteImport.update({
   path: '/painel',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedUsuariosRoute = AuthenticatedUsuariosRouteImport.update({
+  id: '/usuarios',
+  path: '/usuarios',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedAtividadesActivityIdRoute =
   AuthenticatedAtividadesActivityIdRouteImport.update({
     id: '/$activityId',
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/atividades': typeof AuthenticatedAtividadesRouteWithChildren
   '/distribuir': typeof AuthenticatedDistribuirRoute
   '/painel': typeof AuthenticatedPainelRoute
+  '/usuarios': typeof AuthenticatedUsuariosRoute
   '/atividades/$activityId': typeof AuthenticatedAtividadesActivityIdRoute
 }
 export interface FileRoutesByTo {
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/atividades': typeof AuthenticatedAtividadesRouteWithChildren
   '/distribuir': typeof AuthenticatedDistribuirRoute
   '/painel': typeof AuthenticatedPainelRoute
+  '/usuarios': typeof AuthenticatedUsuariosRoute
   '/atividades/$activityId': typeof AuthenticatedAtividadesActivityIdRoute
 }
 export interface FileRoutesById {
@@ -68,15 +76,26 @@ export interface FileRoutesById {
   '/_authenticated/atividades': typeof AuthenticatedAtividadesRouteWithChildren
   '/_authenticated/distribuir': typeof AuthenticatedDistribuirRoute
   '/_authenticated/painel': typeof AuthenticatedPainelRoute
+  '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
   '/_authenticated/atividades/$activityId': typeof AuthenticatedAtividadesActivityIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/atividades' | '/distribuir' | '/painel' | '/atividades/$activityId'
+    | '/'
+    | '/atividades'
+    | '/distribuir'
+    | '/painel'
+    | '/usuarios'
+    | '/atividades/$activityId'
   fileRoutesByTo: FileRoutesByTo
   to:
-    '/' | '/atividades' | '/distribuir' | '/painel' | '/atividades/$activityId'
+    | '/'
+    | '/atividades'
+    | '/distribuir'
+    | '/painel'
+    | '/usuarios'
+    | '/atividades/$activityId'
   id:
     | '__root__'
     | '/'
@@ -84,6 +103,7 @@ export interface FileRouteTypes {
     | '/_authenticated/atividades'
     | '/_authenticated/distribuir'
     | '/_authenticated/painel'
+    | '/_authenticated/usuarios'
     | '/_authenticated/atividades/$activityId'
   fileRoutesById: FileRoutesById
 }
@@ -129,6 +149,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPainelRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/usuarios': {
+      id: '/_authenticated/usuarios'
+      path: '/usuarios'
+      fullPath: '/usuarios'
+      preLoaderRoute: typeof AuthenticatedUsuariosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/atividades/$activityId': {
       id: '/_authenticated/atividades/$activityId'
       path: '/$activityId'
@@ -158,12 +185,14 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAtividadesRoute: typeof AuthenticatedAtividadesRouteWithChildren
   AuthenticatedDistribuirRoute: typeof AuthenticatedDistribuirRoute
   AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
+  AuthenticatedUsuariosRoute: typeof AuthenticatedUsuariosRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAtividadesRoute: AuthenticatedAtividadesRouteWithChildren,
   AuthenticatedDistribuirRoute: AuthenticatedDistribuirRoute,
   AuthenticatedPainelRoute: AuthenticatedPainelRoute,
+  AuthenticatedUsuariosRoute: AuthenticatedUsuariosRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
