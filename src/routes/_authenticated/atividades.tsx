@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSession } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
-import { AREAS, TYPES, formatDate, type Activity } from "@/lib/cmg";
+import { AREAS, STATUS, STATUS_ORDER, TYPES, formatDate, type Activity, type StatusKey } from "@/lib/cmg";
 
 export const Route = createFileRoute("/_authenticated/atividades")({
   head: () => ({
@@ -47,26 +47,28 @@ function ActivitiesPage() {
   if (session.loading) return <PageSkeleton />;
   if (!session.userId) throw redirect({ to: "/" });
 
-  const current = activities.filter((item) => item.status === "em_andamento");
-  const done = activities.filter((item) => item.status === "concluida");
-
   return (
     <AppShell
       session={session}
       title={session.role === "gestao" ? "Atividades da equipe" : "Atividades delegadas"}
-      subtitle="Acompanhe as atividades em andamento e os registros já concluídos."
+      subtitle="Acompanhe todas as etapas das atividades e abra um item para atualizar sua execução."
     >
-      <Tabs defaultValue="current">
-        <TabsList>
-          <TabsTrigger value="current">Em andamento ({current.length})</TabsTrigger>
-          <TabsTrigger value="done">Concluídas ({done.length})</TabsTrigger>
+      <Tabs defaultValue="em_andamento">
+        <TabsList className="h-auto w-full justify-start overflow-x-auto">
+          {STATUS_ORDER.map((status) => (
+            <TabsTrigger key={status} value={status} className="shrink-0">
+              {STATUS[status]} ({activities.filter((item) => item.status === status).length})
+            </TabsTrigger>
+          ))}
         </TabsList>
-        <TabsContent value="current" className="mt-5">
-          <ActivityGrid rows={current} empty="Nenhuma atividade em andamento." />
-        </TabsContent>
-        <TabsContent value="done" className="mt-5">
-          <ActivityGrid rows={done} empty="Nenhuma atividade concluída." />
-        </TabsContent>
+        {STATUS_ORDER.map((status) => (
+          <TabsContent key={status} value={status} className="mt-5">
+            <ActivityGrid
+              rows={activities.filter((item) => item.status === status)}
+              empty={`Nenhuma atividade ${STATUS[status].toLocaleLowerCase("pt-BR")}.`}
+            />
+          </TabsContent>
+        ))}
       </Tabs>
     </AppShell>
   );
@@ -94,9 +96,10 @@ function ActivityGrid({ rows, empty }: { rows: Activity[]; empty: string }) {
           className="panel block p-5 transition-transform hover:-translate-y-0.5 hover:border-primary/40"
         >
           <div className="flex items-start justify-between gap-3">
-            <Badge variant={activity.status === "concluida" ? "secondary" : "default"}>
-              {TYPES[activity.activity_type]}
-            </Badge>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant={statusVariant(activity.status)}>{STATUS[activity.status]}</Badge>
+              <Badge variant="outline">{TYPES[activity.activity_type]}</Badge>
+            </div>
             <span className="text-xs text-muted-foreground">{formatDate(activity.scheduled_date)}</span>
           </div>
           <h2 className="mt-4 text-lg font-semibold">{activity.title}</h2>
@@ -109,6 +112,12 @@ function ActivityGrid({ rows, empty }: { rows: Activity[]; empty: string }) {
       ))}
     </div>
   );
+}
+
+function statusVariant(status: StatusKey): "default" | "secondary" | "outline" {
+  if (status === "concluida") return "secondary";
+  if (status === "pendente") return "outline";
+  return "default";
 }
 
 function PageSkeleton() {
