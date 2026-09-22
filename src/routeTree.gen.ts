@@ -11,10 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
-import { Route as AuthenticatedAtividadesRouteImport } from './routes/_authenticated/atividades'
 import { Route as AuthenticatedDistribuirRouteImport } from './routes/_authenticated/distribuir'
 import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
 import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
+import { Route as AuthenticatedAtividadesIndexRouteImport } from './routes/_authenticated/atividades/index'
 import { Route as AuthenticatedAtividadesActivityIdRouteImport } from './routes/_authenticated/atividades/$activityId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -25,11 +25,6 @@ const IndexRoute = IndexRouteImport.update({
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
-} as any)
-const AuthenticatedAtividadesRoute = AuthenticatedAtividadesRouteImport.update({
-  id: '/atividades',
-  path: '/atividades',
-  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedDistribuirRoute = AuthenticatedDistribuirRouteImport.update({
   id: '/distribuir',
@@ -46,65 +41,71 @@ const AuthenticatedUsuariosRoute = AuthenticatedUsuariosRouteImport.update({
   path: '/usuarios',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAtividadesIndexRoute =
+  AuthenticatedAtividadesIndexRouteImport.update({
+    id: '/atividades/',
+    path: '/atividades/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAtividadesActivityIdRoute =
   AuthenticatedAtividadesActivityIdRouteImport.update({
-    id: '/$activityId',
-    path: '/$activityId',
-    getParentRoute: () => AuthenticatedAtividadesRoute,
+    id: '/atividades/$activityId',
+    path: '/atividades/$activityId',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/atividades': typeof AuthenticatedAtividadesRouteWithChildren
   '/distribuir': typeof AuthenticatedDistribuirRoute
   '/painel': typeof AuthenticatedPainelRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
   '/atividades/$activityId': typeof AuthenticatedAtividadesActivityIdRoute
+  '/atividades/': typeof AuthenticatedAtividadesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/atividades': typeof AuthenticatedAtividadesRouteWithChildren
   '/distribuir': typeof AuthenticatedDistribuirRoute
   '/painel': typeof AuthenticatedPainelRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
   '/atividades/$activityId': typeof AuthenticatedAtividadesActivityIdRoute
+  '/atividades': typeof AuthenticatedAtividadesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
-  '/_authenticated/atividades': typeof AuthenticatedAtividadesRouteWithChildren
   '/_authenticated/distribuir': typeof AuthenticatedDistribuirRoute
   '/_authenticated/painel': typeof AuthenticatedPainelRoute
   '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
   '/_authenticated/atividades/$activityId': typeof AuthenticatedAtividadesActivityIdRoute
+  '/_authenticated/atividades/': typeof AuthenticatedAtividadesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/atividades'
     | '/distribuir'
     | '/painel'
     | '/usuarios'
     | '/atividades/$activityId'
+    | '/atividades/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/atividades'
     | '/distribuir'
     | '/painel'
     | '/usuarios'
     | '/atividades/$activityId'
+    | '/atividades'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
-    | '/_authenticated/atividades'
     | '/_authenticated/distribuir'
     | '/_authenticated/painel'
     | '/_authenticated/usuarios'
     | '/_authenticated/atividades/$activityId'
+    | '/_authenticated/atividades/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -128,13 +129,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/atividades': {
-      id: '/_authenticated/atividades'
-      path: '/atividades'
-      fullPath: '/atividades'
-      preLoaderRoute: typeof AuthenticatedAtividadesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/distribuir': {
       id: '/_authenticated/distribuir'
       path: '/distribuir'
@@ -156,43 +150,38 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUsuariosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/atividades/': {
+      id: '/_authenticated/atividades/'
+      path: '/atividades'
+      fullPath: '/atividades/'
+      preLoaderRoute: typeof AuthenticatedAtividadesIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/atividades/$activityId': {
       id: '/_authenticated/atividades/$activityId'
-      path: '/$activityId'
+      path: '/atividades/$activityId'
       fullPath: '/atividades/$activityId'
       preLoaderRoute: typeof AuthenticatedAtividadesActivityIdRouteImport
-      parentRoute: typeof AuthenticatedAtividadesRoute
+      parentRoute: typeof AuthenticatedRouteRoute
     }
   }
 }
 
-interface AuthenticatedAtividadesRouteChildren {
-  AuthenticatedAtividadesActivityIdRoute: typeof AuthenticatedAtividadesActivityIdRoute
-}
-
-const AuthenticatedAtividadesRouteChildren: AuthenticatedAtividadesRouteChildren =
-  {
-    AuthenticatedAtividadesActivityIdRoute:
-      AuthenticatedAtividadesActivityIdRoute,
-  }
-
-const AuthenticatedAtividadesRouteWithChildren =
-  AuthenticatedAtividadesRoute._addFileChildren(
-    AuthenticatedAtividadesRouteChildren,
-  )
-
 interface AuthenticatedRouteRouteChildren {
-  AuthenticatedAtividadesRoute: typeof AuthenticatedAtividadesRouteWithChildren
   AuthenticatedDistribuirRoute: typeof AuthenticatedDistribuirRoute
   AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
   AuthenticatedUsuariosRoute: typeof AuthenticatedUsuariosRoute
+  AuthenticatedAtividadesActivityIdRoute: typeof AuthenticatedAtividadesActivityIdRoute
+  AuthenticatedAtividadesIndexRoute: typeof AuthenticatedAtividadesIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
-  AuthenticatedAtividadesRoute: AuthenticatedAtividadesRouteWithChildren,
   AuthenticatedDistribuirRoute: AuthenticatedDistribuirRoute,
   AuthenticatedPainelRoute: AuthenticatedPainelRoute,
   AuthenticatedUsuariosRoute: AuthenticatedUsuariosRoute,
+  AuthenticatedAtividadesActivityIdRoute:
+    AuthenticatedAtividadesActivityIdRoute,
+  AuthenticatedAtividadesIndexRoute: AuthenticatedAtividadesIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
