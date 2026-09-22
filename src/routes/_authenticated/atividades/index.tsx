@@ -10,7 +10,7 @@ import { useSession } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
 import { AREAS, STATUS, STATUS_ORDER, TYPES, formatDate, type Activity, type StatusKey } from "@/lib/cmg";
 
-export const Route = createFileRoute("/_authenticated/atividades")({
+export const Route = createFileRoute("/_authenticated/atividades/")({
   head: () => ({
     meta: [
       { title: "Atividades delegadas — CMG" },
