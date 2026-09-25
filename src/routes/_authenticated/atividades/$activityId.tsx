@@ -1,6 +1,16 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
-import { Camera, CheckCircle2, FileDown, ImagePlus, Loader2, MapPin, Save, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState, type ChangeEvent } from "react";
+import {
+  CalendarDays,
+  Camera,
+  CheckCircle2,
+  FileDown,
+  ImagePlus,
+  Loader2,
+  MapPin,
+  Save,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/AppShell";
@@ -9,19 +19,38 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
-import { AREAS, FORM_FIELDS, PHOTO_MAX_BYTES, PHOTO_TYPES, STATUS, STATUS_ORDER, TYPES, formatDate, type Activity, type ActivityPhoto, type StatusKey } from "@/lib/cmg";
+import {
+  AREAS,
+  FORM_FIELDS,
+  PHOTO_MAX_BYTES,
+  PHOTO_TYPES,
+  STATUS,
+  STATUS_ORDER,
+  TYPES,
+  formatDate,
+  type Activity,
+  type ActivityPhoto,
+  type StatusKey,
+} from "@/lib/cmg";
 import { buildActivityReport, type ReportPhoto } from "@/lib/reports";
 
 export const Route = createFileRoute("/_authenticated/atividades/$activityId")({
   head: () => ({
     meta: [
-      { title: "Execução de atividade — CMG" },
-      { name: "description", content: "Registro técnico de execução em campo da Torre Meridian." },
-      { property: "og:title", content: "Execução de atividade — CMG" },
-      { property: "og:description", content: "Registro técnico e evidências fotográficas." },
+      { title: "Detalhes da atividade — CMG" },
+      {
+        name: "description",
+        content: "Atualização do status, execução e evidências da atividade.",
+      },
+      { property: "og:title", content: "Detalhes da atividade — CMG" },
+      {
+        property: "og:description",
+        content: "Registro operacional completo da atividade de facilities.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -34,180 +63,432 @@ function ActivityDetailPage() {
   const session = useSession();
   const [activity, setActivity] = useState<Activity | null>(null);
   const [photos, setPhotos] = useState<ActivityPhoto[]>([]);
-  const [formData, setFormData] = useState<Record<string, string>>({});
-  const [captions, setCaptions] = useState<Record<string, string>>({});
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [photoCaption, setPhotoCaption] = useState("");
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    const [{ data: row }, { data: photoRows }] = await Promise.all([
-      supabase.from("activities").select("*").eq("id", activityId).maybeSingle(),
-      supabase.from("activity_photos").select("*").eq("activity_id", activityId).order("created_at"),
-    ]);
-    const nextActivity = row as Activity | null;
+  const loadActivity = useCallback(async () => {
+    const { data, error } = await supabase.from("activities").select("*").eq("id", activityId).maybeSingle();
+
+    if (error) {
+      toast.error("Não foi possível carregar a atividade");
+      setLoading(false);
+      return;
+    }
+
+    const nextActivity = data as Activity | null;
     setActivity(nextActivity);
     setFormData(nextActivity?.form_data ?? {});
-    const nextPhotos = (photoRows as ActivityPhoto[]) ?? [];
-    setPhotos(nextPhotos);
-    const paths = nextPhotos.map((photo) => photo.storage_path);
-    if (paths.length) {
-      const { data } = await supabase.storage.from("activity-photos").createSignedUrls(paths, 3600);
-      const urls: Record<string, string> = {};
-      data?.forEach((item, index) => { if (item.signedUrl && paths[index]) urls[paths[index]] = item.signedUrl; });
-      setSignedUrls(urls);
+    setLoading(false);
+  }, [activityId]);
+
+  const loadPhotos = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("activity_photos")
+      .select("*")
+      .eq("activity_id", activityId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      toast.error("Não foi possível carregar as evidências");
+      return;
     }
+
+    const nextPhotos = (data as ActivityPhoto[]) ?? [];
+    setPhotos(nextPhotos);
+
+    const paths = nextPhotos.map((photo) => photo.storage_path);
+    if (paths.length === 0) {
+      setSignedUrls({});
+      return;
+    }
+
+    const { data: urlRows } = await supabase.storage.from("activity-photos").createSignedUrls(paths, 3600);
+    const urls: Record<string, string> = {};
+    urlRows?.forEach((row, index) => {
+      const path = paths[index];
+      if (path && row.signedUrl) urls[path] = row.signedUrl;
+    });
+    setSignedUrls(urls);
   }, [activityId]);
 
   useEffect(() => {
-    void load();
-    const channel = supabase.channel(`activity-${activityId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "activities", filter: `id=eq.${activityId}` }, () => void load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "activity_photos", filter: `activity_id=eq.${activityId}` }, () => void load())
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [activityId, load]);
+    void loadActivity();
+    void loadPhotos();
 
-  if (session.loading) return null;
+    const channel = supabase
+      .channel(`activity-detail-rebuilt-${activityId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "activities", filter: `id=eq.${activityId}` },
+        () => void loadActivity(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "activity_photos", filter: `activity_id=eq.${activityId}` },
+        () => void loadPhotos(),
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [activityId, loadActivity, loadPhotos]);
+
+  if (session.loading || loading) return <ActivityDetailSkeleton />;
   if (!session.userId) throw redirect({ to: "/" });
-  if (!activity) return <AppShell session={session} title="Atividade não encontrada"><div className="panel p-8 text-center">Este registro não está disponível para o seu perfil.</div></AppShell>;
+  if (!activity) {
+    return (
+      <AppShell session={session} title="Atividade não encontrada">
+        <div className="panel p-8 text-center text-muted-foreground">
+          Este registro não está disponível para o seu perfil.
+        </div>
+      </AppShell>
+    );
+  }
 
   const readonly = activity.status === "concluida";
 
-  const save = async () => {
+  const saveExecution = async () => {
     setBusy(true);
     const { error } = await supabase.from("activities").update({ form_data: formData }).eq("id", activity.id);
     setBusy(false);
-    if (error) { toast.error("Não foi possível salvar o registro"); return; }
-    toast.success("Registro salvo");
-    await load();
-  };
 
-  const changeStatus = async (status: StatusKey) => {
-    if (status === activity.status) return;
-    if (status === "concluida") {
-      const missing = FORM_FIELDS[activity.activity_type].find((field) => !formData[field.key]?.trim());
-      if (missing) { toast.error(`Preencha o campo: ${missing.label}`); return; }
+    if (error) {
+      toast.error("Não foi possível salvar o registro");
+      return;
     }
-    setBusy(true);
-    const { error } = await supabase.from("activities").update({
-      form_data: formData,
-      status,
-      completed_at: status === "concluida" ? new Date().toISOString() : null,
-    }).eq("id", activity.id);
-    setBusy(false);
-    if (error) { toast.error("Não foi possível atualizar o status da atividade"); return; }
-    toast.success(status === "concluida" ? "Atividade concluída e relatório liberado" : `Status alterado para ${STATUS[status].toLocaleLowerCase("pt-BR")}`);
-    await load();
+
+    toast.success("Registro salvo");
+    await loadActivity();
   };
 
+  const updateStatus = async (status: StatusKey) => {
+    if (status === activity.status) return;
 
+    if (status === "concluida") {
+      const missingField = FORM_FIELDS[activity.activity_type].find((field) => !formData[field.key]?.trim());
+      if (missingField) {
+        toast.error(`Preencha o campo: ${missingField.label}`);
+        return;
+      }
+    }
+
+    setBusy(true);
+    const { error } = await supabase
+      .from("activities")
+      .update({
+        form_data: formData,
+        status,
+        completed_at: status === "concluida" ? new Date().toISOString() : null,
+      })
+      .eq("id", activity.id);
+    setBusy(false);
+
+    if (error) {
+      toast.error("Não foi possível atualizar o status da atividade");
+      return;
+    }
+
+    toast.success(status === "concluida" ? "Atividade concluída" : `Status alterado para ${STATUS[status].toLocaleLowerCase("pt-BR")}`);
+    await loadActivity();
+  };
+
+  const handlePhoto = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (!PHOTO_TYPES.includes(file.type)) {
+      toast.error("Envie somente imagens JPEG ou PNG");
+      return;
+    }
+    if (file.size > PHOTO_MAX_BYTES) {
+      toast.error("A imagem deve ter no máximo 50 MB");
+      return;
+    }
+
+    const extension = file.type === "image/png" ? "png" : "jpg";
+    const storagePath = `${activity.id}/${crypto.randomUUID()}.${extension}`;
+    setBusy(true);
+
+    const { error: uploadError } = await supabase.storage
+      .from("activity-photos")
+      .upload(storagePath, file, { contentType: file.type });
+
+    if (uploadError) {
+      setBusy(false);
+      toast.error("Não foi possível enviar a foto");
+      return;
+    }
+
+    const { error: recordError } = await supabase.from("activity_photos").insert({
+      activity_id: activity.id,
+      storage_path: storagePath,
+      caption: photoCaption.trim() || null,
+      uploaded_by: session.userId,
+    });
+
+    if (recordError) {
+      await supabase.storage.from("activity-photos").remove([storagePath]);
+      setBusy(false);
+      toast.error("Não foi possível registrar a foto");
+      return;
+    }
+
+    setPhotoCaption("");
+    setBusy(false);
+    toast.success("Foto anexada");
+    await loadPhotos();
+  };
 
   const removePhoto = async (photo: ActivityPhoto) => {
+    setBusy(true);
     const { error } = await supabase.from("activity_photos").delete().eq("id", photo.id);
-    if (error) { toast.error("Não foi possível excluir a foto"); return; }
+
+    if (error) {
+      setBusy(false);
+      toast.error("Não foi possível excluir a foto");
+      return;
+    }
+
     await supabase.storage.from("activity-photos").remove([photo.storage_path]);
-    await load();
+    setBusy(false);
+    toast.success("Foto excluída");
+    await loadPhotos();
   };
 
-  const report = async () => {
+  const downloadReport = async () => {
     if (activity.status !== "concluida") return;
     setBusy(true);
-    const reportPhotos: ReportPhoto[] = [];
-    for (const photo of photos) {
-      const { data } = await supabase.storage.from("activity-photos").download(photo.storage_path);
-      if (!data) continue;
-      const dataUrl = await blobToDataUrl(data);
-      reportPhotos.push({ caption: photo.caption, dataUrl, format: data.type === "image/png" ? "PNG" : "JPEG" });
+
+    try {
+      const reportPhotos: ReportPhoto[] = [];
+      for (const photo of photos) {
+        const { data } = await supabase.storage.from("activity-photos").download(photo.storage_path);
+        if (!data) continue;
+        reportPhotos.push({
+          caption: photo.caption,
+          dataUrl: await blobToDataUrl(data),
+          format: data.type === "image/png" ? "PNG" : "JPEG",
+        });
+      }
+
+      const { data: analyst } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", activity.assigned_to)
+        .maybeSingle();
+      const document = await buildActivityReport(
+        activity,
+        analyst?.full_name ?? session.profile?.full_name ?? "Analista",
+        reportPhotos,
+      );
+      document.save(`CMG-${activity.title.replace(/[^a-z0-9]+/gi, "-")}.pdf`);
+    } finally {
+      setBusy(false);
     }
-    const { data: analyst } = await supabase.from("profiles").select("full_name").eq("id", activity.assigned_to).maybeSingle();
-    const doc = await buildActivityReport(activity, analyst?.full_name ?? session.profile?.full_name ?? "Analista", reportPhotos);
-    doc.save(`CMG-${activity.title.replace(/[^a-z0-9]+/gi, "-")}.pdf`);
-    setBusy(false);
   };
 
   return (
-    <AppShell session={session} title={activity.title} subtitle={`${TYPES[activity.activity_type]} · ${AREAS[activity.area]}`}>
-      <div className="mb-5 flex flex-wrap items-center gap-2 text-sm">
+    <AppShell
+      session={session}
+      title={activity.title}
+      subtitle={`${TYPES[activity.activity_type]} • ${AREAS[activity.area]}`}
+    >
+      <div className="mb-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
         <Badge variant={readonly ? "secondary" : "default"}>{STATUS[activity.status]}</Badge>
-        <span className="text-muted-foreground">Programada para {formatDate(activity.scheduled_date)}</span>
-        {activity.location ? <span className="flex items-center gap-1 text-muted-foreground"><MapPin className="size-3.5" /> {activity.location}</span> : null}
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          <CalendarDays className="size-4" aria-hidden="true" />
+          Programada para {formatDate(activity.scheduled_date)}
+        </span>
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          <MapPin className="size-4" aria-hidden="true" />
+          {activity.location || "Local não informado"}
+        </span>
       </div>
 
-      <section className="panel mb-5 grid gap-4 p-5 sm:grid-cols-[1fr_18rem] sm:items-center">
-        <div>
-          <Badge variant="outline" className="mb-3">Atualização da atividade</Badge>
-          <h2 className="text-lg font-semibold">Status da atividade</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Atualize a etapa conforme o andamento do serviço.</p>
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="activity-status">Situação atual</Label>
-          <Select value={activity.status} onValueChange={(value) => void changeStatus(value as StatusKey)} disabled={busy}>
-            <SelectTrigger id="activity-status" className="h-11" aria-label="Situação atual da atividade">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_ORDER.map((status) => <SelectItem key={status} value={status}>{STATUS[status]}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      </section>
+      <div className="grid gap-5">
+        <section className="panel grid gap-5 p-5 sm:grid-cols-[1fr_18rem] sm:items-end sm:p-6">
+          <div>
+            <p className="text-xs font-semibold uppercase text-primary">Atualização da atividade</p>
+            <h2 className="mt-2 text-lg font-semibold">Status da atividade</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Selecione a etapa que representa o andamento atual do serviço.
+            </p>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="activity-status">Situação atual</Label>
+            <Select
+              value={activity.status}
+              onValueChange={(value) => void updateStatus(value as StatusKey)}
+              disabled={busy}
+            >
+              <SelectTrigger id="activity-status" className="h-11 w-full" aria-label="Situação atual">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_ORDER.map((status) => (
+                  <SelectItem key={status} value={status}>{STATUS[status]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </section>
 
-      {activity.description ? <section className="panel mb-5 p-5"><h2 className="font-semibold">Escopo delegado</h2><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{activity.description}</p></section> : null}
+        <section className="panel p-5 sm:p-6">
+          <h2 className="text-lg font-semibold">Escopo delegado</h2>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+            {activity.description || "Sem instruções adicionais para esta atividade."}
+          </p>
+        </section>
 
-      <section className="panel p-5 sm:p-7">
-        <h2 className="text-lg font-semibold">Registro de execução</h2>
-        <div className="mt-5 grid gap-5 sm:grid-cols-2">
-          {FORM_FIELDS[activity.activity_type].map((field) => (
-            <div key={field.key} className={`grid gap-2 ${field.long ? "sm:col-span-2" : ""}`}>
-              <Label htmlFor={field.key}>{field.label}</Label>
-              {field.long ? (
-                <Textarea id={field.key} rows={4} maxLength={3000} value={formData[field.key] ?? ""} disabled={readonly} onChange={(event) => setFormData((current) => ({ ...current, [field.key]: event.target.value }))} />
-              ) : (
-                <Input id={field.key} maxLength={200} value={formData[field.key] ?? ""} disabled={readonly} onChange={(event) => setFormData((current) => ({ ...current, [field.key]: event.target.value }))} />
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
+        <section className="panel p-5 sm:p-6">
+          <h2 className="text-lg font-semibold">Registro de execução</h2>
+          <div className="mt-5 grid gap-5 sm:grid-cols-2">
+            {FORM_FIELDS[activity.activity_type].map((field) => (
+              <div key={field.key} className={`grid gap-2 ${field.long ? "sm:col-span-2" : ""}`}>
+                <Label htmlFor={`field-${field.key}`}>{field.label}</Label>
+                {field.long ? (
+                  <Textarea
+                    id={`field-${field.key}`}
+                    rows={4}
+                    maxLength={3000}
+                    value={formData[field.key] ?? ""}
+                    disabled={readonly || busy}
+                    onChange={(event) => setFormData((current) => ({ ...current, [field.key]: event.target.value }))}
+                  />
+                ) : (
+                  <Input
+                    id={`field-${field.key}`}
+                    maxLength={200}
+                    value={formData[field.key] ?? ""}
+                    disabled={readonly || busy}
+                    onChange={(event) => setFormData((current) => ({ ...current, [field.key]: event.target.value }))}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
 
-      <section className="panel mt-5 p-5 sm:p-7">
-        <div className="flex items-center gap-3"><Camera className="size-5 text-primary" /><div><h2 className="text-lg font-semibold">Evidências fotográficas</h2><p className="text-sm text-muted-foreground">JPEG ou PNG · até 50 MB por arquivo</p></div></div>
-        {!readonly ? (
-          <div className="mt-5 grid gap-3 rounded-md border border-dashed p-4 sm:grid-cols-[1fr_auto] sm:items-end">
-            <div className="grid gap-2"><Label htmlFor="photo-caption">Legenda da próxima foto</Label><Input id="photo-caption" placeholder="Ex.: Condição encontrada no Lado A" onChange={(event) => setCaptions((current) => ({ ...current, pending: event.target.value }))} /></div>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline"><label><Camera className="size-4" /> Câmera<input className="sr-only" type="file" accept="image/jpeg,image/png" capture="environment" onChange={(event) => { const file = event.target.files?.[0]; if (file) { setCaptions((current) => ({ ...current, [file.name]: current["pending"] ?? "" })); void uploadWithCaption(file, captions["pending"] ?? "", activity.id, session.userId ?? "", load, setBusy); } }} /></label></Button>
-              <Button asChild variant="outline"><label><ImagePlus className="size-4" /> Galeria<input className="sr-only" type="file" accept="image/jpeg,image/png" onChange={(event) => { const file = event.target.files?.[0]; if (file) { setCaptions((current) => ({ ...current, [file.name]: current["pending"] ?? "" })); void uploadWithCaption(file, captions["pending"] ?? "", activity.id, session.userId ?? "", load, setBusy); } }} /></label></Button>
+        <section className="panel p-5 sm:p-6">
+          <div className="flex items-start gap-3">
+            <Camera className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+            <div>
+              <h2 className="text-lg font-semibold">Evidências fotográficas</h2>
+              <p className="text-sm text-muted-foreground">JPEG ou PNG • até 50 MB por arquivo</p>
             </div>
           </div>
-        ) : null}
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {photos.map((photo) => <figure key={photo.id} className="overflow-hidden rounded-md border bg-muted"><img src={signedUrls[photo.storage_path]} alt={photo.caption || "Evidência da atividade"} className="aspect-[4/3] w-full object-cover" /><figcaption className="flex items-start justify-between gap-2 p-3 text-sm"><span>{photo.caption || "Sem legenda"}</span>{!readonly ? <Button size="icon" variant="ghost" onClick={() => void removePhoto(photo)} aria-label="Excluir foto"><Trash2 className="size-4 text-destructive" /></Button> : null}</figcaption></figure>)}
-        </div>
-      </section>
 
-      <div className="sticky bottom-0 mt-6 flex flex-wrap justify-end gap-2 border-t bg-background/95 py-4 backdrop-blur">
-        {!readonly ? <><Button variant="outline" onClick={() => void save()} disabled={busy}>{busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Salvar</Button><Button onClick={() => void changeStatus("concluida")} disabled={busy}><CheckCircle2 className="size-4" /> Concluir atividade</Button></> : <Button onClick={() => void report()} disabled={busy}>{busy ? <Loader2 className="size-4 animate-spin" /> : <FileDown className="size-4" />} Gerar relatório PDF</Button>}
+          {!readonly ? (
+            <div className="mt-5 grid gap-4 rounded-md border border-dashed p-4 md:grid-cols-[1fr_auto] md:items-end">
+              <div className="grid gap-2">
+                <Label htmlFor="photo-caption">Legenda da próxima foto</Label>
+                <Input
+                  id="photo-caption"
+                  value={photoCaption}
+                  maxLength={240}
+                  placeholder="Ex.: Condição encontrada no Lado A"
+                  onChange={(event) => setPhotoCaption(event.target.value)}
+                  disabled={busy}
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button asChild variant="outline" disabled={busy}>
+                  <label className="cursor-pointer">
+                    <Camera className="size-4" aria-hidden="true" />
+                    Câmera
+                    <input className="sr-only" type="file" accept="image/jpeg,image/png" capture="environment" onChange={handlePhoto} />
+                  </label>
+                </Button>
+                <Button asChild variant="outline" disabled={busy}>
+                  <label className="cursor-pointer">
+                    <ImagePlus className="size-4" aria-hidden="true" />
+                    Galeria
+                    <input className="sr-only" type="file" accept="image/jpeg,image/png" onChange={handlePhoto} />
+                  </label>
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {photos.length > 0 ? (
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {photos.map((photo) => (
+                <figure key={photo.id} className="overflow-hidden rounded-md border bg-muted">
+                  <img
+                    src={signedUrls[photo.storage_path]}
+                    alt={photo.caption || "Evidência da atividade"}
+                    className="aspect-[4/3] w-full object-cover"
+                  />
+                  <figcaption className="flex min-h-14 items-start justify-between gap-2 p-3 text-sm">
+                    <span>{photo.caption || "Sem legenda"}</span>
+                    {!readonly ? (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => void removePhoto(photo)}
+                        disabled={busy}
+                        aria-label="Excluir foto"
+                      >
+                        <Trash2 className="size-4 text-destructive" aria-hidden="true" />
+                      </Button>
+                    ) : null}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-5 rounded-md bg-muted p-4 text-sm text-muted-foreground">
+              Nenhuma evidência fotográfica anexada.
+            </p>
+          )}
+        </section>
+      </div>
+
+      <div className="sticky bottom-0 z-10 mt-6 flex flex-wrap justify-end gap-2 border-t bg-background/95 py-4 backdrop-blur">
+        {!readonly ? (
+          <>
+            <Button variant="outline" onClick={() => void saveExecution()} disabled={busy}>
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+              Salvar
+            </Button>
+            <Button onClick={() => void updateStatus("concluida")} disabled={busy}>
+              <CheckCircle2 className="size-4" aria-hidden="true" />
+              Concluir atividade
+            </Button>
+          </>
+        ) : (
+          <Button onClick={() => void downloadReport()} disabled={busy}>
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <FileDown className="size-4" />}
+            Gerar relatório PDF
+          </Button>
+        )}
       </div>
     </AppShell>
   );
 }
 
-async function uploadWithCaption(file: File, caption: string, activityId: string, userId: string, reload: () => Promise<void>, setBusy: (value: boolean) => void) {
-  if (!PHOTO_TYPES.includes(file.type)) { toast.error("Envie somente imagens JPEG ou PNG"); return; }
-  if (file.size > PHOTO_MAX_BYTES) { toast.error("A imagem deve ter no máximo 50 MB"); return; }
-  const extension = file.type === "image/png" ? "png" : "jpg";
-  const path = `${activityId}/${crypto.randomUUID()}.${extension}`;
-  setBusy(true);
-  const { error: uploadError } = await supabase.storage.from("activity-photos").upload(path, file, { contentType: file.type });
-  if (uploadError) { setBusy(false); toast.error("Não foi possível enviar a foto"); return; }
-  const { error } = await supabase.from("activity_photos").insert({ activity_id: activityId, storage_path: path, caption: caption.trim() || null, uploaded_by: userId });
-  setBusy(false);
-  if (error) { await supabase.storage.from("activity-photos").remove([path]); toast.error("Não foi possível registrar a foto"); return; }
-  toast.success("Foto anexada");
-  await reload();
+function ActivityDetailSkeleton() {
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <Skeleton className="h-9 w-80 max-w-full" />
+      <Skeleton className="mt-3 h-5 w-72 max-w-full" />
+      <Skeleton className="mt-8 h-32 w-full" />
+      <Skeleton className="mt-5 h-40 w-full" />
+      <Skeleton className="mt-5 h-72 w-full" />
+    </div>
+  );
 }
 
 function blobToDataUrl(blob: Blob) {
-  return new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(blob); });
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
