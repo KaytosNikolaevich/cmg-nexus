@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { emailForCompanyId } from "@/lib/auth.functions";
+import { isAtLeast18 } from "@/lib/validation";
 
 const passwordSchema = z
   .string()
@@ -69,7 +70,8 @@ export const createManagedUser = createServerFn({ method: "POST" })
     z.object({
       fullName: z.string().trim().min(3, "Informe o nome completo").max(120),
       companyId: companyIdSchema,
-      birthDate: z.string().date("Informe uma data de nascimento válida"),
+      birthDate: z.string().date("Informe uma data de nascimento válida")
+        .refine((value) => isAtLeast18(value), "O usuário deve ter 18 anos ou mais para se cadastrar"),
       role: z.enum(["analista", "gestao"]),
       password: passwordSchema,
     }).parse(input),
