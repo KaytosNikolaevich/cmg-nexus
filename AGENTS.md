@@ -8,3 +8,5 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- Keep shared form-validation rules in `src/lib/validation.ts` so browser feedback and server checks agree on age and numeric formats.
