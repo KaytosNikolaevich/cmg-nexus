@@ -37,6 +37,7 @@ import {
   type StatusKey,
 } from "@/lib/cmg";
 import { buildActivityReport, type ReportPhoto } from "@/lib/reports";
+import { isValidTemperature } from "@/lib/validation";
 
 export const Route = createFileRoute("/_authenticated/atividades/$activityId")({
   head: () => ({
@@ -151,7 +152,17 @@ function ActivityDetailPage() {
 
   const readonly = activity.status === "concluida";
 
+  const validateTemperature = () => {
+    const temperature = formData["temperatura"]?.trim();
+    if (activity.activity_type === "ronda_pavimentos" && temperature && !isValidTemperature(temperature)) {
+      toast.error("Informe uma temperatura numérica válida em °C");
+      return false;
+    }
+    return true;
+  };
+
   const saveExecution = async () => {
+    if (!validateTemperature()) return;
     setBusy(true);
     const { error } = await supabase.from("activities").update({ form_data: formData }).eq("id", activity.id);
     setBusy(false);
@@ -167,6 +178,7 @@ function ActivityDetailPage() {
 
   const updateStatus = async (status: StatusKey) => {
     if (status === activity.status) return;
+    if (!validateTemperature()) return;
 
     if (status === "concluida") {
       const missingField = FORM_FIELDS[activity.activity_type].find((field) => !formData[field.key]?.trim());
@@ -363,10 +375,17 @@ function ActivityDetailPage() {
                 ) : (
                   <Input
                     id={`field-${field.key}`}
-                    maxLength={200}
+                    type={field.key === "temperatura" ? "number" : "text"}
+                    step={field.key === "temperatura" ? "any" : undefined}
+                    inputMode={field.key === "temperatura" ? "decimal" : undefined}
+                    maxLength={field.key === "temperatura" ? undefined : 200}
                     value={formData[field.key] ?? ""}
                     disabled={readonly || busy}
-                    onChange={(event) => setFormData((current) => ({ ...current, [field.key]: event.target.value }))}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (field.key === "temperatura" && value !== "" && !/^-?(?:\d*(?:\.\d*)?)$/.test(value)) return;
+                      setFormData((current) => ({ ...current, [field.key]: value }));
+                    }}
                   />
                 )}
               </div>

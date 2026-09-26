@@ -32,6 +32,7 @@ import {
   listManagedUsers,
   type ManagedUser,
 } from "@/lib/user-management.functions";
+import { isAtLeast18 } from "@/lib/validation";
 
 export const Route = createFileRoute("/_authenticated/usuarios")({
   head: () => ({
@@ -59,6 +60,7 @@ function UsersPage() {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [role, setRole] = useState<"analista" | "gestao">("analista");
+  const [birthDateError, setBirthDateError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -83,13 +85,19 @@ function UsersPage() {
     event.preventDefault();
     const form = event.currentTarget;
     const values = new FormData(form);
+    const birthDate = String(values.get("birthDate") ?? "");
+    if (!isAtLeast18(birthDate)) {
+      setBirthDateError("O usuário deve ter 18 anos ou mais para se cadastrar.");
+      return;
+    }
+    setBirthDateError("");
     setBusy(true);
     try {
       await createUser({
         data: {
           fullName: String(values.get("fullName") ?? ""),
           companyId: String(values.get("companyId") ?? ""),
-          birthDate: String(values.get("birthDate") ?? ""),
+          birthDate,
           password: String(values.get("password") ?? ""),
           role,
         },
@@ -113,7 +121,7 @@ function UsersPage() {
       subtitle="Consulte os acessos da equipe e cadastre novos usuários."
     >
       <div className="mb-5 flex justify-end">
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setBirthDateError(""); }}>
           <DialogTrigger asChild>
             <Button><Plus className="size-4" /> Novo usuário</Button>
           </DialogTrigger>
@@ -133,7 +141,20 @@ function UsersPage() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="user-birth-date">Data de nascimento</Label>
-                <Input id="user-birth-date" name="birthDate" type="date" required />
+                <Input
+                  id="user-birth-date"
+                  name="birthDate"
+                  type="date"
+                  required
+                  aria-invalid={Boolean(birthDateError)}
+                  aria-describedby={birthDateError ? "user-birth-date-error" : undefined}
+                  onChange={(event) => {
+                    setBirthDateError(event.target.value && !isAtLeast18(event.target.value)
+                      ? "O usuário deve ter 18 anos ou mais para se cadastrar."
+                      : "");
+                  }}
+                />
+                {birthDateError && <p id="user-birth-date-error" role="alert" className="text-sm text-destructive">{birthDateError}</p>}
               </div>
               <div className="grid gap-2">
                 <Label>Cargo</Label>
